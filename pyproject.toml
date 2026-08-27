@@ -1,0 +1,12 @@
+[project]
+name = "fantasy-hockey-draft"
+version = "0.1.0"
+description = "A fantasy hockey draft board built on what is actually predictable"
+requires-python = ">=3.9"
+dependencies = ["pandas>=2.0", "numpy>=1.24", "scipy>=1.10", "matplotlib>=3.7"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
