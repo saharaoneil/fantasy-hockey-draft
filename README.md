@@ -2,10 +2,13 @@
 
 A draft board built on what's actually predictable, not on what happened last year.
 
+**[Open the draft board →](https://saharaoneil.github.io/fantasy-hockey-draft/)**
+
 ```bash
 python3 -m pip install -r requirements.txt
 python3 scripts/analyze_predictability.py --out out/   # the finding
 python3 scripts/build_draft_board.py --out out/        # the board
+python3 scripts/build_draft_page.py                    # the draft-day tool
 ```
 
 Pulls 12 NHL seasons from the league's public stats API, measures how much of
@@ -145,9 +148,32 @@ collapses. That's the same conclusion the predictability analysis reached from
 a completely different direction: goalies are both **unpredictable and
 low-VORP**. Two independent reasons to wait.
 
-Replacement level is computed from the *available* pool, not fixed from league
-settings, so recomputing it after each pick re-ranks the board as positions
-drain. That's what the draft-day tool will do.
+### Replacement level during the draft, and a correction
+
+Replacement level is computed from the pool still available and the slots still
+to fill, rather than fixed once from league settings. An earlier version of this
+README said that "as a position drains, its replacement level drops and everyone
+left at it gains value." Measured in the live tool, that is wrong in both
+direction and cause:
+
+| scenario | D replacement level |
+|---|---|
+| pre-draft | 111 |
+| top 40 defencemen taken **in value order** | 111 (unchanged) |
+| 40 *weak* defencemen taken (ranks 60–100) | **164** |
+| a run on centres instead | 111 (unchanged) |
+
+Draining a position in value order changes nothing, because the 8th-best
+*available* defenceman is still the 48th-best overall — the same player the
+static calculation already pointed at. What moves the number is picks
+**deviating from value order**, and when they do it moves *up*: if the league
+reaches for weak defencemen, your floor at defence improves, so chasing defence
+becomes *less* urgent rather than more.
+
+That is the opposite of the usual draft-room instinct, and it falls out of what
+VORP actually measures — an upgrade over the player you would otherwise end up
+with. If everyone left at a position is equivalent, it does not matter which one
+you get.
 
 ### Known limitations
 
@@ -195,16 +221,38 @@ is much cheaper than a plausible-looking board that is entirely empty.
 ## Layout
 
 ```
+web/template.html          the draft-day page; data is baked in at build time
+docs/index.html            the built page, served by GitHub Pages
 fantasy/nhl.py             pull and cache season stats from the NHL API
 fantasy/predictability.py  year-over-year persistence, measured honestly
 fantasy/projections.py     regress each stat by how sticky it actually is
 fantasy/value.py           scoring, replacement level, VORP
 scripts/analyze_predictability.py   the finding: tables and the chart
 scripts/build_draft_board.py        the board: CSV and JSON
+scripts/build_draft_page.py         bake the board into one HTML file
 ```
 
-`draft_board.json` is the build artifact the draft-day tool will read, so the
-model stays offline and the tool stays a fast view over it.
+`draft_board.json` is the build artifact the page is baked from, so the model
+stays offline and the tool stays a fast view over it.
+
+## The draft-day tool
+
+One self-contained HTML file, 209 KB, no dependencies and no server. The data
+is **embedded rather than fetched**, because fetching a sibling JSON is blocked
+by CORS from `file://` — and a draft tool that only works online is one that
+fails in a basement on bad wifi.
+
+- One click to mark a player taken, one to claim them; undo for misclicks
+- Instant search and position filters
+- Roster panel showing which slots you have filled
+- CSV export of whatever is still available
+- Picks persist in `localStorage`, so a refresh mid-draft loses nothing
+
+**The page re-implements the value calculation in JavaScript**, which risks
+drifting from `value.py`. So it checks itself: on load it recomputes VORP for
+an untouched board and compares against the numbers Python wrote. If they
+disagree by more than half a point it shows a warning banner rather than
+quietly ranking on the wrong arithmetic.
 
 Data is cached to `data/raw/` on first run so the analysis is reproducible —
 a stat that shifts between runs is an anecdote, not a measurement.

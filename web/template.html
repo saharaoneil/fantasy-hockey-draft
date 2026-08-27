@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Draft board</title>
+<style>
+  :root {
+    --bg: #12151a; --panel: #1a1f27; --line: #2a313c;
+    --text: #e8ecf1; --muted: #93a0b1; --accent: #4d9de0;
+    --good: #3fb950; --warn: #d29922; --bad: #f85149;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f7f8fa; --panel: #fff; --line: #dde2e8;
+      --text: #1a1f27; --muted: #5c6875; --accent: #1f6feb;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  }
+  header {
+    position: sticky; top: 0; z-index: 10; background: var(--panel);
+    border-bottom: 1px solid var(--line); padding: 10px 14px;
+  }
+  h1 { margin: 0 0 2px; font-size: 17px; }
+  .sub { color: var(--muted); font-size: 12.5px; }
+  .controls { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  input[type=search] {
+    flex: 1 1 180px; min-width: 0; padding: 9px 11px; font-size: 15px;
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--line); border-radius: 7px;
+  }
+  .tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+  button {
+    font: inherit; cursor: pointer; border-radius: 7px;
+    border: 1px solid var(--line); background: var(--bg); color: var(--text);
+    padding: 8px 11px;
+  }
+  button:hover { border-color: var(--accent); }
+  .tab.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .layout { display: grid; grid-template-columns: 1fr 260px; gap: 14px; padding: 14px; }
+  @media (max-width: 720px) { .layout { grid-template-columns: 1fr; } }
+  .panel {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 9px; padding: 12px;
+  }
+  .panel h2 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase;
+              letter-spacing: .06em; color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--line); }
+  th { font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em;
+       color: var(--muted); font-weight: 600; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tr.mine { background: color-mix(in srgb, var(--good) 14%, transparent); }
+  .pos { display: inline-block; min-width: 22px; padding: 1px 5px; border-radius: 4px;
+         font-size: 11.5px; font-weight: 700; text-align: center; color: #fff; }
+  .pos.C { background: #6f42c1; } .pos.W { background: #1f6feb; }
+  .pos.D { background: #bf8700; } .pos.G { background: #cf222e; }
+  .act { display: flex; gap: 5px; }
+  .act button { padding: 5px 8px; font-size: 12.5px; }
+  .rise { color: var(--good); } .fall { color: var(--bad); }
+  .slot { display: flex; justify-content: space-between; padding: 3px 0;
+          border-bottom: 1px dashed var(--line); font-size: 13.5px; }
+  .slot.full { color: var(--muted); }
+  .warnbar { background: var(--bad); color: #fff; padding: 8px 14px; font-size: 13px; }
+  .foot { padding: 0 14px 24px; color: var(--muted); font-size: 12px; }
+  .empty { padding: 20px; text-align: center; color: var(--muted); }
+</style>
+</head>
+<body>
+<div id="mismatch" class="warnbar" hidden></div>
+
+<header>
+  <h1>Draft board <span class="sub" id="season"></span></h1>
+  <div class="sub" id="league"></div>
+  <div class="controls">
+    <input type="search" id="q" placeholder="Search players…" autocomplete="off">
+    <div class="tabs" id="tabs"></div>
+    <button id="undo">Undo</button>
+    <button id="csv">CSV</button>
+    <button id="reset">Reset</button>
+  </div>
+</header>
+
+<div class="layout">
+  <div class="panel">
+    <h2 id="count"></h2>
+    <table>
+      <thead><tr>
+        <th class="num">#</th><th>Player</th><th>Pos</th>
+        <th class="num">Age</th><th class="num">Pts</th><th class="num">VORP</th>
+        <th class="num">Δ</th><th></th>
+      </tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div class="empty" id="empty" hidden>No players match.</div>
+  </div>
+
+  <div>
+    <div class="panel">
+      <h2>My roster</h2>
+      <div id="roster"></div>
+    </div>
+    <div class="panel" style="margin-top:14px">
+      <h2>Replacement level</h2>
+      <div id="levels"></div>
+    </div>
+  </div>
+</div>
+
+<p class="foot">
+  Ranked by value over replacement, recomputed from who is still available and
+  how many slots are still to fill. If the league drafts a position in value
+  order the number does not move — it shifts when picks deviate from it, which
+  real drafts do constantly. Picks are saved in this browser, so a refresh
+  mid-draft loses nothing.
+</p>
+
+<script>
+const DATA = /*__DRAFT_BOARD_DATA__*/;
+const KEY = "draft-board-state-v1";
+
+let taken = new Set(), mine = new Set(), history = [];
+let filter = "ALL", query = "";
+
+try {
+  const saved = JSON.parse(localStorage.getItem(KEY) || "null");
+  if (saved) {
+    taken = new Set(saved.taken); mine = new Set(saved.mine);
+    history = saved.history || [];
+  }
+} catch (e) { /* corrupt or unavailable storage: start clean */ }
+
+function save() {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(
+      { taken: [...taken], mine: [...mine], history }));
+  } catch (e) { /* private mode; the board still works, it just won't persist */ }
+}
+
+const POSITIONS = Object.keys(DATA.league.starters);
+
+/* Mirrors value.replacement_levels, with one addition: slots already filled
+   around the league are subtracted, so the replacement player is the last one
+   who will STILL be drafted rather than the last who would have been. */
+function replacementLevels(available) {
+  const levels = {};
+  for (const pos of POSITIONS) {
+    const pool = available.filter(p => p.position === pos)
+                          .sort((a, b) => b.projected_points - a.projected_points);
+    if (!pool.length) { levels[pos] = 0; continue; }
+    const total = DATA.league.teams * DATA.league.starters[pos];
+    const gone = [...taken].filter(id => byId.get(id)?.position === pos).length;
+    const remaining = Math.max(1, total - gone);
+    levels[pos] = pool[Math.min(remaining, pool.length) - 1].projected_points;
+  }
+  return levels;
+}
+
+const byId = new Map(DATA.players.map(p => [p.playerId, p]));
+const baselineRank = new Map(
+  [...DATA.players].sort((a, b) => b.vorp - a.vorp)
+    .map((p, i) => [p.playerId, i + 1]));
+
+/* The Python model already computed VORP for an untouched board. Recomputing it
+   here from zero picks must reproduce that, and if it does not the two
+   implementations have drifted -- which would be invisible without this check. */
+function verifyAgainstPython() {
+  const levels = replacementLevels(DATA.players);
+  let worst = 0;
+  for (const p of DATA.players) {
+    worst = Math.max(worst, Math.abs((p.projected_points - levels[p.position]) - p.vorp));
+  }
+  if (worst > 0.5) {
+    const bar = document.getElementById("mismatch");
+    bar.hidden = false;
+    bar.textContent =
+      `Warning: this page's value calculation disagrees with the model that built ` +
+      `the data by up to ${worst.toFixed(1)} points. The ranking may be wrong.`;
+  }
+}
+
+function render() {
+  const available = DATA.players.filter(p => !taken.has(p.playerId));
+  const levels = replacementLevels(available);
+
+  const ranked = available.map(p => ({
+    ...p, liveVorp: p.projected_points - levels[p.position],
+  })).sort((a, b) => b.liveVorp - a.liveVorp);
+
+  const liveRank = new Map(ranked.map((p, i) => [p.playerId, i + 1]));
+  const q = query.trim().toLowerCase();
+  const shown = ranked.filter(p =>
+    (filter === "ALL" || p.position === filter) &&
+    (!q || (p.name || "").toLowerCase().includes(q)));
+
+  document.getElementById("rows").innerHTML = shown.slice(0, 300).map(p => {
+    const shift = (baselineRank.get(p.playerId) || 0) - liveRank.get(p.playerId);
+    const arrow = shift > 2 ? `<span class="rise">▲${shift}</span>`
+                : shift < -2 ? `<span class="fall">▼${-shift}</span>` : "";
+    return `<tr class="${mine.has(p.playerId) ? "mine" : ""}">
+      <td class="num">${liveRank.get(p.playerId)}</td>
+      <td>${escapeHtml(p.name || "—")}</td>
+      <td><span class="pos ${p.position}">${p.position}</span></td>
+      <td class="num">${p.age == null ? "—" : p.age.toFixed(0)}</td>
+      <td class="num">${p.projected_points.toFixed(0)}</td>
+      <td class="num"><b>${p.liveVorp.toFixed(1)}</b></td>
+      <td class="num">${arrow}</td>
+      <td><div class="act">
+        <button data-mine="${p.playerId}">Mine</button>
+        <button data-taken="${p.playerId}">Taken</button>
+      </div></td>
+    </tr>`;
+  }).join("");
+
+  document.getElementById("empty").hidden = shown.length > 0;
+  document.getElementById("count").textContent =
+    `${shown.length} available${shown.length > 300 ? " (showing top 300)" : ""}`;
+
+  document.getElementById("roster").innerHTML = POSITIONS.map(pos => {
+    const have = [...mine].map(id => byId.get(id)).filter(p => p?.position === pos);
+    const need = DATA.league.starters[pos];
+    const names = have.map(p => escapeHtml(p.name)).join(", ") || "—";
+    return `<div class="slot ${have.length >= need ? "full" : ""}">
+      <span><b>${pos}</b> ${names}</span><span>${have.length}/${need}</span></div>`;
+  }).join("");
+
+  document.getElementById("levels").innerHTML = POSITIONS.map(pos =>
+    `<div class="slot"><span><b>${pos}</b></span>
+     <span>${levels[pos].toFixed(0)} pts</span></div>`).join("");
+
+  save();
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g,
+    c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function pick(id, isMine) {
+  taken.add(id);
+  if (isMine) mine.add(id);
+  history.push({ id, isMine });
+  render();
+}
+
+document.getElementById("rows").addEventListener("click", e => {
+  const t = e.target.closest("button");
+  if (!t) return;
+  if (t.dataset.mine) pick(Number(t.dataset.mine), true);
+  else if (t.dataset.taken) pick(Number(t.dataset.taken), false);
+});
+
+document.getElementById("undo").onclick = () => {
+  const last = history.pop();
+  if (!last) return;
+  taken.delete(last.id); mine.delete(last.id);
+  render();
+};
+
+document.getElementById("reset").onclick = () => {
+  if (!confirm("Clear every pick and start over?")) return;
+  taken = new Set(); mine = new Set(); history = [];
+  render();
+};
+
+document.getElementById("csv").onclick = () => {
+  const available = DATA.players.filter(p => !taken.has(p.playerId));
+  const levels = replacementLevels(available);
+  const rows = [["rank", "name", "position", "age", "projected_points", "vorp"]];
+  available.map(p => ({ ...p, v: p.projected_points - levels[p.position] }))
+    .sort((a, b) => b.v - a.v)
+    .forEach((p, i) => rows.push([i + 1, p.name, p.position,
+      p.age == null ? "" : p.age.toFixed(1),
+      p.projected_points.toFixed(1), p.v.toFixed(1)]));
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+  a.download = "draft_board.csv";
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+
+document.getElementById("q").addEventListener("input", e => {
+  query = e.target.value; render();
+});
+
+document.getElementById("tabs").innerHTML =
+  ["ALL", ...POSITIONS].map(p =>
+    `<button class="tab${p === "ALL" ? " on" : ""}" data-pos="${p}">${p}</button>`).join("");
+document.getElementById("tabs").addEventListener("click", e => {
+  const t = e.target.closest("button");
+  if (!t) return;
+  filter = t.dataset.pos;
+  [...document.querySelectorAll(".tab")].forEach(b =>
+    b.classList.toggle("on", b.dataset.pos === filter));
+  render();
+});
+
+document.getElementById("season").textContent =
+  `${DATA.target_season}-${String(DATA.target_season + 1).slice(2)}`;
+document.getElementById("league").textContent =
+  `${DATA.league.teams} teams · ` +
+  POSITIONS.map(p => `${DATA.league.starters[p]}${p}`).join(" ") +
+  ` · ${DATA.players.length} players`;
+
+verifyAgainstPython();
+render();
+</script>
+</body>
+</html>
