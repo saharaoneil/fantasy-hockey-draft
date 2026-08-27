@@ -169,6 +169,27 @@ def skaters(start_year: int, *, cache_dir: Path, refresh: bool = False) -> pd.Da
     return merged
 
 
+def bios(start_year: int, *, cache_dir: Path, refresh: bool = False) -> pd.DataFrame:
+    """Birth date, draft position and current team, one row per skater.
+
+    Kept separate from the stat reports because it is nearly static: a bio
+    changes once a year, so pulling it alongside every stat query would be
+    waste. Age is what the projection actually needs.
+    """
+    frame = pd.DataFrame(
+        cached_report("skater", "bios", start_year, cache_dir=cache_dir, refresh=refresh)
+    )
+    frame["season"] = start_year
+    frame["birthDate"] = pd.to_datetime(frame["birthDate"], errors="coerce")
+
+    # Age on 1 February of the season, roughly its midpoint -- a fairer single
+    # number than age on opening night for a season that spans a birthday.
+    midpoint = pd.Timestamp(year=start_year + 1, month=2, day=1)
+    frame["age"] = (midpoint - frame["birthDate"]).dt.days / 365.25
+    return frame[["playerId", "season", "birthDate", "age", "currentTeamAbbrev",
+                  "draftYear", "draftOverall"]]
+
+
 def goalies(start_year: int, *, cache_dir: Path, refresh: bool = False) -> pd.DataFrame:
     """One row per goalie for one season."""
     frame = pd.DataFrame(
