@@ -18,6 +18,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from fantasy import adp as adp_mod  # noqa: E402
 from fantasy import nhl, predictability as pred, projections, value  # noqa: E402
 
 FIRST_SEASON = 2014
@@ -41,6 +42,12 @@ def main() -> int:
     parser.add_argument("--out", type=Path, default=Path("out"))
     parser.add_argument("--cache", type=Path, default=Path("data/raw"))
     parser.add_argument("--teams", type=int, default=12)
+    parser.add_argument(
+        "--adp-csv", type=Path, default=None,
+        help="two-column CSV of name,adp from your platform. Without it the "
+             "board falls back to last season's finish as a consensus proxy, "
+             "which is labelled as a proxy and never as ADP",
+    )
     parser.add_argument(
         "--require-recent-season", action="store_true", default=True,
         help="drop players with no game in the most recent season; without it "
@@ -131,16 +138,66 @@ def main() -> int:
     )
     board = value.value_over_replacement(board, league)
 
+    # --- ADP, or an honest stand-in for it -------------------------------
+    league_shape = value.LeagueConfig(
+        teams=args.teams, starters=value.DEFAULT_LEAGUE.starters
+    )
+    draftable = args.teams * sum(value.DEFAULT_LEAGUE.starters.values())
+    if args.adp_csv:
+        source = f"ADP from {args.adp_csv}"
+        match = adp_mod.join_adp(board, adp_mod.load_adp_csv(args.adp_csv))
+        print(f"\nmatched {match.matched} of "
+              f"{match.matched + len(match.unmatched_names)} ADP names "
+              f"({match.match_rate:.0%})")
+        if match.unmatched_names:
+            print(f"  unmatched: {', '.join(match.unmatched_names[:8])}"
+                  + (" ..." if len(match.unmatched_names) > 8 else ""))
+        board = match.frame
+    else:
+        source = "last season's finish (a proxy for consensus, NOT real ADP)"
+        actuals = skaters[skaters["season"] == LAST_SEASON].copy()
+        goalie_actuals = goalies[goalies["season"] == LAST_SEASON].copy()
+        for group, group_stats in ((actuals, SKATER_STATS), (goalie_actuals, GOALIE_STATS)):
+            for stat in group_stats:
+                group[f"{stat}_rate"] = group[stat] / group["gamesPlayed"]
+            group["projected_games"] = group["gamesPlayed"]
+            group["last_points"] = value.fantasy_points(
+                group, value.DEFAULT_SCORING, games_column="projected_games")
+        finished = pd.concat([actuals, goalie_actuals], ignore_index=True)
+        board = adp_mod.join_adp(
+            board,
+            adp_mod.last_season_rank(
+                board, finished, points_column="last_points",
+                slots_per_position=league_shape.starters,
+            ),
+        ).frame
+
+    board = adp_mod.value_gap(board)
+    print(f"\nvalue gap measured against: {source}")
+
     print(f"\nPOSITIONAL SCARCITY ({args.teams}-team league)")
     print(value.positional_scarcity(board, league).to_string(index=False))
 
     columns = ["name", "position", "age", "projected_games", "projected_points",
-               "replacement", "vorp"]
+               "replacement", "vorp", "adp", "gap"]
     print(f"\nTOP 20 BY VORP for {args.target_season}-{str(args.target_season+1)[2:]}")
     top = board[columns].head(20).copy()
     for col in ("age", "projected_games", "projected_points", "replacement", "vorp"):
         top[col] = top[col].round(1)
     print(top.to_string(index=False))
+
+    print("\nTARGETS - the model likes them more than the room does")
+    show = ["name", "position", "vorp", "adp", "value_rank", "gap"]
+    tgt = adp_mod.sleepers(board, draftable=draftable, limit=10).copy()
+    for col in ("vorp", "adp", "value_rank", "gap"):
+        tgt[col] = tgt[col].astype(float).round(0)
+    print(tgt[show].to_string(index=False))
+
+    print("\nREACHES - going earlier than their value supports")
+    rch = adp_mod.reaches(board, draftable=draftable, limit=10).copy()
+    for col in ("vorp", "adp", "value_rank", "gap"):
+        rch[col] = rch[col].astype(float).round(0)
+    print(rch[show].to_string(index=False))
 
     print("\nWhere VORP disagrees with raw projected points:")
     by_points = board.sort_values("projected_points", ascending=False).head(40)

@@ -79,6 +79,7 @@
   <div class="controls">
     <input type="search" id="q" placeholder="Search players…" autocomplete="off">
     <div class="tabs" id="tabs"></div>
+    <button id="targets" title="Available players the model rates well above where they are going">Targets</button>
     <button id="undo">Undo</button>
     <button id="csv">CSV</button>
     <button id="reset">Reset</button>
@@ -92,7 +93,7 @@
       <thead><tr>
         <th class="num">#</th><th>Player</th><th>Pos</th>
         <th class="num">Age</th><th class="num">Pts</th><th class="num">VORP</th>
-        <th class="num">Δ</th><th></th>
+        <th class="num">ADP</th><th class="num">Gap</th><th class="num">Δ</th><th></th>
       </tr></thead>
       <tbody id="rows"></tbody>
     </table>
@@ -112,6 +113,11 @@
 </div>
 
 <p class="foot">
+  <b>Gap</b> is where a player is going minus where his value says he should —
+  positive means the room is letting him slide. Without a real ADP file it is
+  measured against last season's finish, interleaved by position, which is a
+  model of how rooms draft rather than a record of how they did.
+  <br><br>
   Ranked by value over replacement, recomputed from who is still available and
   how many slots are still to fill. If the league drafts a position in value
   order the number does not move — it shifts when picks deviate from it, which
@@ -124,7 +130,7 @@ const DATA = /*__DRAFT_BOARD_DATA__*/;
 const KEY = "draft-board-state-v1";
 
 let taken = new Set(), mine = new Set(), history = [];
-let filter = "ALL", query = "";
+let filter = "ALL", query = "", targetsOnly = false;
 
 try {
   const saved = JSON.parse(localStorage.getItem(KEY) || "null");
@@ -195,6 +201,7 @@ function render() {
   const q = query.trim().toLowerCase();
   const shown = ranked.filter(p =>
     (filter === "ALL" || p.position === filter) &&
+    (!targetsOnly || (p.gap != null && p.gap >= 25 && p.liveVorp > 0)) &&
     (!q || (p.name || "").toLowerCase().includes(q)));
 
   document.getElementById("rows").innerHTML = shown.slice(0, 300).map(p => {
@@ -208,6 +215,8 @@ function render() {
       <td class="num">${p.age == null ? "—" : p.age.toFixed(0)}</td>
       <td class="num">${p.projected_points.toFixed(0)}</td>
       <td class="num"><b>${p.liveVorp.toFixed(1)}</b></td>
+      <td class="num">${p.adp == null ? "—" : Math.round(p.adp)}</td>
+      <td class="num">${gapCell(p)}</td>
       <td class="num">${arrow}</td>
       <td><div class="act">
         <button data-mine="${p.playerId}">Mine</button>
@@ -235,6 +244,18 @@ function render() {
   save();
 }
 
+/* Gap is ADP rank minus value rank: positive means the room is letting him
+   slide. Only shown for players the model actually rates, since a huge gap on
+   a replacement-level player is noise rather than a bargain. */
+function gapCell(p) {
+  if (p.adp == null || p.gap == null) return "—";
+  const g = Math.round(p.gap);
+  if (p.liveVorp <= 0) return `<span style="color:var(--muted)">${g}</span>`;
+  if (g >= 25) return `<span class="rise">+${g}</span>`;
+  if (g <= -25) return `<span class="fall">${g}</span>`;
+  return g > 0 ? `+${g}` : String(g);
+}
+
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g,
     c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -253,6 +274,13 @@ document.getElementById("rows").addEventListener("click", e => {
   if (t.dataset.mine) pick(Number(t.dataset.mine), true);
   else if (t.dataset.taken) pick(Number(t.dataset.taken), false);
 });
+
+document.getElementById("targets").onclick = (e) => {
+  targetsOnly = !targetsOnly;
+  e.target.classList.toggle("tab", true);
+  e.target.classList.toggle("on", targetsOnly);
+  render();
+};
 
 document.getElementById("undo").onclick = () => {
   const last = history.pop();

@@ -183,8 +183,7 @@ you get.
   compression cancels — but absolute totals read low.
 - **Goalie ages are missing**; the bios endpoint pulled here is skater-only, so
   no age curve is applied to goalies.
-- **No ADP**, so the board can't yet show where value diverges from where
-  players actually go.
+- **ADP is a proxy unless you supply real numbers** — see below.
 
 ## Method
 
@@ -227,6 +226,7 @@ fantasy/nhl.py             pull and cache season stats from the NHL API
 fantasy/predictability.py  year-over-year persistence, measured honestly
 fantasy/projections.py     regress each stat by how sticky it actually is
 fantasy/value.py           scoring, replacement level, VORP
+fantasy/adp.py             draft position, name matching, and the value gap
 scripts/analyze_predictability.py   the finding: tables and the chart
 scripts/build_draft_board.py        the board: CSV and JSON
 scripts/build_draft_page.py         bake the board into one HTML file
@@ -234,6 +234,57 @@ scripts/build_draft_page.py         bake the board into one HTML file
 
 `draft_board.json` is the build artifact the page is baked from, so the model
 stays offline and the tool stays a fast view over it.
+
+## ADP, and why there isn't a feed for it
+
+A ranking says who's good. The **gap** between your ranking and where the room
+drafts says who to actually target — that's the part anyone else can use.
+
+There is no free NHL ADP feed, and this doesn't pretend otherwise. Checked at
+build time:
+
+- **Sleeper's** public API carries NHL rosters but leaves `search_rank` null for
+  every hockey player (it's populated for NFL only).
+- **FantasyPros'** `robots.txt` disallows `/api/`, `/json/` and `/ajax/` — which
+  is where the numbers live.
+- **Yahoo** requires OAuth.
+
+So there are two honest routes instead of an invented one.
+
+**Bring your own.** `--adp-csv` takes a two-column `name,adp` file from
+whatever platform your league uses. That's better than a "consensus" number
+anyway: a Yahoo points league drafts nothing like an ESPN roto one, and it's
+*your* league's ADP that decides who's actually available. Name matching folds
+accents, periods and suffixes (`Tim Stützle` = `Tim Stutzle`, `T.J. Oshie` =
+`TJ Oshie`), and unmatched names are reported rather than dropped — a silent
+60% match rate would turn the gap column into a ranking of who happened to join.
+
+**Or use the proxy.** Without a file, the board ranks players by what they
+actually scored last season under your scoring settings. It is never labelled
+ADP. It models the *habit* — drafting off last year's totals — which is exactly
+what this project argues with.
+
+### The proxy needed fixing before it was useful
+
+The first version ranked on raw points, and the target list came back as
+"every defenceman." That's a positional artifact, not a finding: defencemen
+score fewer points, so a flat ranking buries all of them, and VORP then
+correctly says they're underdrafted — but it says it about the whole position
+at once.
+
+Now positions are ranked separately and interleaved in proportion to how many
+of each get drafted, which is what a real board does, because the room does
+know defencemen are scarce. The targets that survive are individuals:
+
+| player | VORP | proxy ADP | gap |
+|---|---|---|---|
+| Auston Matthews (C) | 55 | 221 | **+193** |
+| Brady Tkachuk (W) | 73 | 88 | +74 |
+| Connor Hellebuyck (G) | 80 | 84 | +73 |
+| Mikko Rantanen (W) | 64 | 64 | +42 |
+
+The signal is legible: these are largely players who missed time last season, so
+a last-season ranking buries them while a three-season projection doesn't.
 
 ## The draft-day tool
 
@@ -245,6 +296,10 @@ fails in a basement on bad wifi.
 - One click to mark a player taken, one to claim them; undo for misclicks
 - Instant search and position filters
 - Roster panel showing which slots you have filled
+- **Targets** filter: available players the model rates well above where
+  they're going
+- ADP and gap columns, with the gap greyed out for players whose value is
+  negative — a big gap on a replacement-level player is noise, not a bargain
 - CSV export of whatever is still available
 - Picks persist in `localStorage`, so a refresh mid-draft loses nothing
 
