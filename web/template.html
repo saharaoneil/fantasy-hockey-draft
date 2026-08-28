@@ -5,77 +5,203 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Draft board</title>
 <style>
+  /* Retro NHL: aged newsprint, sweater stripes, arena-signage type.
+     No web fonts on purpose -- the page must work offline, so the display face
+     is built from stacks that ship with the OS and already read as vintage
+     sports lettering. */
   :root {
-    --bg: #12151a; --panel: #1a1f27; --line: #2a313c;
-    --text: #e8ecf1; --muted: #93a0b1; --accent: #4d9de0;
-    --good: #3fb950; --warn: #d29922; --bad: #f85149;
-  }
-  @media (prefers-color-scheme: light) {
-    :root {
-      --bg: #f7f8fa; --panel: #fff; --line: #dde2e8;
-      --text: #1a1f27; --muted: #5c6875; --accent: #1f6feb;
-    }
+    --paper:    #e8dcc4;   /* aged program paper */
+    --paper-2:  #f6f0e2;   /* card stock */
+    --ice:      #fdfcf7;
+    --ink:      #14202e;   /* near-black navy */
+    --navy:     #0b2545;
+    --red:      #c8102e;   /* centre-ice red */
+    --blue:     #0033a0;   /* blue line */
+    --gold:     #f0b323;
+    --muted:    #6b6152;
+    --rule:     #14202e;
+    --display: "Haettenschweiler", "Arial Narrow Bold", Impact,
+               "Franklin Gothic Bold", "Arial Black", sans-serif;
+    --body: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --score: "Courier New", Courier, monospace;
   }
   * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
   body {
-    margin: 0; background: var(--bg); color: var(--text);
-    font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    margin: 0; color: var(--ink); font-family: var(--body); font-size: 15px;
+    line-height: 1.4;
+    background-color: var(--paper);
+    /* faint halftone, like a printed program */
+    background-image:
+      repeating-linear-gradient(0deg,
+        rgba(20,32,46,.030) 0 1px, transparent 1px 4px);
   }
+
+  /* --- sweater stripe, used as a divider ------------------------------- */
+  .stripes { height: 10px; display: flex; }
+  .stripes i { flex: 1; }
+  .stripes i:nth-child(1) { background: var(--red); }
+  .stripes i:nth-child(2) { background: var(--paper-2); flex: 0 0 14%; }
+  .stripes i:nth-child(3) { background: var(--blue); }
+  .stripes i:nth-child(4) { background: var(--paper-2); flex: 0 0 14%; }
+  .stripes i:nth-child(5) { background: var(--red); }
+
   header {
-    position: sticky; top: 0; z-index: 10; background: var(--panel);
-    border-bottom: 1px solid var(--line); padding: 10px 14px;
+    position: sticky; top: 0; z-index: 20;
+    background: var(--navy); color: var(--paper-2);
+    border-bottom: 3px solid var(--ink);
   }
-  h1 { margin: 0 0 2px; font-size: 17px; }
-  .sub { color: var(--muted); font-size: 12.5px; }
-  .controls { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .headbar { padding: 12px 16px 10px; }
+  h1 {
+    margin: 0; font-family: var(--display); font-weight: normal;
+    font-size: 34px; line-height: .95; letter-spacing: .045em;
+    text-transform: uppercase; color: var(--paper-2);
+  }
+  h1 .yr { color: var(--gold); }
+  .sub {
+    font-size: 11.5px; letter-spacing: .13em; text-transform: uppercase;
+    color: #a9bdd4; margin-top: 5px; font-weight: 700;
+  }
+
+  .controls {
+    display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+    padding: 10px 16px 12px; background: var(--ink);
+  }
   input[type=search] {
-    flex: 1 1 180px; min-width: 0; padding: 9px 11px; font-size: 15px;
-    background: var(--bg); color: var(--text);
-    border: 1px solid var(--line); border-radius: 7px;
+    flex: 1 1 190px; min-width: 0; padding: 9px 12px;
+    font-family: var(--body); font-size: 14px;
+    background: var(--paper-2); color: var(--ink);
+    border: 2px solid var(--ink); border-radius: 0;
+    box-shadow: 3px 3px 0 rgba(0,0,0,.45);
   }
-  .tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+  input[type=search]::placeholder { color: #9a9081; }
+
   button {
-    font: inherit; cursor: pointer; border-radius: 7px;
-    border: 1px solid var(--line); background: var(--bg); color: var(--text);
-    padding: 8px 11px;
+    font-family: var(--display); font-size: 15px; letter-spacing: .07em;
+    text-transform: uppercase; cursor: pointer;
+    padding: 8px 12px 6px; border-radius: 0;
+    border: 2px solid var(--ink); background: var(--paper-2); color: var(--ink);
+    box-shadow: 3px 3px 0 rgba(0,0,0,.45);
+    transition: transform .04s, box-shadow .04s;
   }
-  button:hover { border-color: var(--accent); }
-  .tab.on { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .layout { display: grid; grid-template-columns: 1fr 260px; gap: 14px; padding: 14px; }
-  @media (max-width: 720px) { .layout { grid-template-columns: 1fr; } }
+  button:hover { background: var(--gold); }
+  button:active { transform: translate(3px, 3px); box-shadow: none; }
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tab.on { background: var(--red); color: var(--paper-2); border-color: var(--ink); }
+
+  .layout {
+    display: grid; grid-template-columns: minmax(0,1fr) 268px; gap: 16px;
+    padding: 16px; align-items: start;
+    max-width: 1180px; margin: 0 auto;   /* stops the table stretching on wide monitors */
+  }
+  @media (max-width: 760px) { .layout { grid-template-columns: minmax(0,1fr); } }
+  .headbar, .controls, .foot { max-width: 1180px; margin-left: auto; margin-right: auto; }
+
+  /* The table keeps its shape and scrolls sideways rather than wrapping names
+     onto two lines, which is what a narrow viewport otherwise does to it. */
+  .scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
   .panel {
-    background: var(--panel); border: 1px solid var(--line);
-    border-radius: 9px; padding: 12px;
+    background: var(--ice);
+    border: 3px solid var(--ink);
+    box-shadow: 6px 6px 0 rgba(20,32,46,.55);
   }
-  .panel h2 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase;
-              letter-spacing: .06em; color: var(--muted); }
+  .panel > h2 {
+    margin: 0; padding: 7px 12px 5px;
+    background: var(--navy); color: var(--paper-2);
+    font-family: var(--display); font-weight: normal; font-size: 16px;
+    letter-spacing: .1em; text-transform: uppercase;
+  }
+  .panel .body { padding: 10px 12px 12px; }
+
   table { width: 100%; border-collapse: collapse; }
-  th, td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--line); }
-  th { font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em;
-       color: var(--muted); font-weight: 600; }
-  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-  tr.mine { background: color-mix(in srgb, var(--good) 14%, transparent); }
-  .pos { display: inline-block; min-width: 22px; padding: 1px 5px; border-radius: 4px;
-         font-size: 11.5px; font-weight: 700; text-align: center; color: #fff; }
-  .pos.C { background: #6f42c1; } .pos.W { background: #1f6feb; }
-  .pos.D { background: #bf8700; } .pos.G { background: #cf222e; }
-  .act { display: flex; gap: 5px; }
-  .act button { padding: 5px 8px; font-size: 12.5px; }
-  .rise { color: var(--good); } .fall { color: var(--bad); }
-  .slot { display: flex; justify-content: space-between; padding: 3px 0;
-          border-bottom: 1px dashed var(--line); font-size: 13.5px; }
+  thead th {
+    background: var(--paper); color: var(--ink);
+    font-family: var(--display); font-weight: normal;
+    font-size: 13px; letter-spacing: .09em; text-transform: uppercase;
+    text-align: left; padding: 6px 6px 4px;
+    border-bottom: 2px solid var(--ink);
+    position: sticky; top: 0;
+  }
+  td { padding: 7px 6px; border-bottom: 1px solid rgba(20,32,46,.18); }
+  tbody tr:nth-child(even) { background: rgba(20,32,46,.035); }
+  tbody tr:hover { background: rgba(0,51,160,.09); }
+  td.num, th.num { text-align: right; font-family: var(--score);
+                   font-variant-numeric: tabular-nums; font-size: 13.5px; }
+  td.name { font-weight: 700; white-space: nowrap; }
+  /* On a phone the Mine/Taken buttons are the whole interaction, so columns
+     are dropped until they fit on screen rather than left behind a sideways
+     scroll. Age and the rank arrow go first, then raw points and ADP -- VORP
+     and the gap are what the board is actually for. */
+  @media (max-width: 620px) {
+    th.drop, td.drop { display: none; }
+    .act button { padding: 4px 7px 3px; font-size: 12px; }
+    td, thead th { padding-left: 4px; padding-right: 4px; }
+    td.name { font-size: 14px; }
+  }
+  @media (max-width: 560px) {
+    th.drop2, td.drop2 { display: none; }
+    td.name { max-width: 122px; overflow: hidden; text-overflow: ellipsis; }
+    .act button { padding: 4px 5px 3px; font-size: 11px; letter-spacing: .03em;
+                  box-shadow: 2px 2px 0 rgba(0,0,0,.4); }
+    .pos { min-width: 20px; padding: 2px 3px 1px; font-size: 12px; }
+    td.num, th.num { font-size: 12px; }
+  }
+  @media (max-width: 420px) {
+    th.drop3, td.drop3 { display: none; }
+  }
+  tr.mine { background: rgba(240,179,35,.30) !important;
+            box-shadow: inset 4px 0 0 var(--gold); }
+
+  .pos {
+    display: inline-block; min-width: 26px; padding: 2px 5px 1px;
+    font-family: var(--display); font-size: 13px; letter-spacing: .06em;
+    text-align: center; color: var(--paper-2);
+    border: 1.5px solid var(--ink);
+  }
+  .pos.C { background: var(--red); }
+  .pos.W { background: var(--blue); }
+  .pos.D { background: #1f7a3d; }
+  .pos.G { background: #6b2d8c; }
+
+  .act { display: flex; gap: 5px; justify-content: flex-end; }
+  .act button { padding: 4px 8px 3px; font-size: 13px; box-shadow: 2px 2px 0 rgba(0,0,0,.4); }
+  .act button:active { transform: translate(2px,2px); }
+
+  .rise { color: #1f7a3d; font-weight: 700; }
+  .fall { color: var(--red); font-weight: 700; }
+
+  .slot {
+    display: flex; justify-content: space-between; gap: 8px;
+    padding: 5px 0; border-bottom: 1px dashed rgba(20,32,46,.3);
+    font-size: 13.5px;
+  }
+  .slot:last-child { border-bottom: 0; }
+  .slot b { font-family: var(--display); font-size: 15px; letter-spacing: .06em; }
   .slot.full { color: var(--muted); }
-  .warnbar { background: var(--bad); color: #fff; padding: 8px 14px; font-size: 13px; }
-  .foot { padding: 0 14px 24px; color: var(--muted); font-size: 12px; }
-  .empty { padding: 20px; text-align: center; color: var(--muted); }
+  .slot .v { font-family: var(--score); }
+
+  .warnbar {
+    background: var(--red); color: #fff; padding: 9px 16px;
+    font-size: 13px; font-weight: 700; border-bottom: 3px solid var(--ink);
+  }
+  .foot {
+    max-width: 900px; margin: 0; padding: 4px 16px 28px;
+    color: var(--muted); font-size: 12.5px;
+  }
+  .foot b { color: var(--ink); }
+  .empty { padding: 22px; text-align: center; color: var(--muted); }
 </style>
 </head>
 <body>
 <div id="mismatch" class="warnbar" hidden></div>
 
 <header>
-  <h1>Draft board <span class="sub" id="season"></span></h1>
-  <div class="sub" id="league"></div>
+  <div class="stripes"><i></i><i></i><i></i><i></i><i></i></div>
+  <div class="headbar">
+    <h1>Draft Board <span class="yr" id="season"></span></h1>
+    <div class="sub" id="league"></div>
+  </div>
   <div class="controls">
     <input type="search" id="q" placeholder="Search players…" autocomplete="off">
     <div class="tabs" id="tabs"></div>
@@ -84,30 +210,34 @@
     <button id="csv">CSV</button>
     <button id="reset">Reset</button>
   </div>
+  <div class="stripes"><i></i><i></i><i></i><i></i><i></i></div>
 </header>
 
 <div class="layout">
   <div class="panel">
     <h2 id="count"></h2>
+    <div class="scroll">
     <table>
       <thead><tr>
         <th class="num">#</th><th>Player</th><th>Pos</th>
-        <th class="num">Age</th><th class="num">Pts</th><th class="num">VORP</th>
-        <th class="num">ADP</th><th class="num">Gap</th><th class="num">Δ</th><th></th>
+        <th class="num drop">Age</th><th class="num drop2">Pts</th><th class="num">VORP</th>
+        <th class="num drop2">ADP</th><th class="num drop3">Gap</th>
+        <th class="num drop">Δ</th><th></th>
       </tr></thead>
       <tbody id="rows"></tbody>
     </table>
+    </div>
     <div class="empty" id="empty" hidden>No players match.</div>
   </div>
 
   <div>
     <div class="panel">
-      <h2>My roster</h2>
-      <div id="roster"></div>
+      <h2>My Roster</h2>
+      <div class="body" id="roster"></div>
     </div>
-    <div class="panel" style="margin-top:14px">
-      <h2>Replacement level</h2>
-      <div id="levels"></div>
+    <div class="panel" style="margin-top:16px">
+      <h2>Replacement Level</h2>
+      <div class="body" id="levels"></div>
     </div>
   </div>
 </div>
@@ -151,15 +281,19 @@ const POSITIONS = Object.keys(DATA.league.starters);
 
 /* Mirrors value.replacement_levels, with one addition: slots already filled
    around the league are subtracted, so the replacement player is the last one
-   who will STILL be drafted rather than the last who would have been. */
-function replacementLevels(available) {
+   who will STILL be drafted rather than the last who would have been.
+
+   The drafted set is a parameter rather than read from the global, because the
+   self-check below has to evaluate an untouched board no matter what picks the
+   browser happens to have restored. */
+function replacementLevels(available, drafted = taken) {
   const levels = {};
   for (const pos of POSITIONS) {
     const pool = available.filter(p => p.position === pos)
                           .sort((a, b) => b.projected_points - a.projected_points);
     if (!pool.length) { levels[pos] = 0; continue; }
     const total = DATA.league.teams * DATA.league.starters[pos];
-    const gone = [...taken].filter(id => byId.get(id)?.position === pos).length;
+    const gone = [...drafted].filter(id => byId.get(id)?.position === pos).length;
     const remaining = Math.max(1, total - gone);
     levels[pos] = pool[Math.min(remaining, pool.length) - 1].projected_points;
   }
@@ -175,7 +309,10 @@ const baselineRank = new Map(
    here from zero picks must reproduce that, and if it does not the two
    implementations have drifted -- which would be invisible without this check. */
 function verifyAgainstPython() {
-  const levels = replacementLevels(DATA.players);
+  // Explicitly an empty draft. Reading the restored picks here would compare a
+  // mid-draft board against Python's pre-draft numbers and cry wolf on every
+  // reload -- which it did, until this was passed in.
+  const levels = replacementLevels(DATA.players, new Set());
   let worst = 0;
   for (const p of DATA.players) {
     worst = Math.max(worst, Math.abs((p.projected_points - levels[p.position]) - p.vorp));
@@ -210,14 +347,14 @@ function render() {
                 : shift < -2 ? `<span class="fall">▼${-shift}</span>` : "";
     return `<tr class="${mine.has(p.playerId) ? "mine" : ""}">
       <td class="num">${liveRank.get(p.playerId)}</td>
-      <td>${escapeHtml(p.name || "—")}</td>
+      <td class="name">${escapeHtml(p.name || "—")}</td>
       <td><span class="pos ${p.position}">${p.position}</span></td>
-      <td class="num">${p.age == null ? "—" : p.age.toFixed(0)}</td>
-      <td class="num">${p.projected_points.toFixed(0)}</td>
+      <td class="num drop">${p.age == null ? "—" : p.age.toFixed(0)}</td>
+      <td class="num drop2">${p.projected_points.toFixed(0)}</td>
       <td class="num"><b>${p.liveVorp.toFixed(1)}</b></td>
-      <td class="num">${p.adp == null ? "—" : Math.round(p.adp)}</td>
-      <td class="num">${gapCell(p)}</td>
-      <td class="num">${arrow}</td>
+      <td class="num drop2">${p.adp == null ? "—" : Math.round(p.adp)}</td>
+      <td class="num drop3">${gapCell(p)}</td>
+      <td class="num drop">${arrow}</td>
       <td><div class="act">
         <button data-mine="${p.playerId}">Mine</button>
         <button data-taken="${p.playerId}">Taken</button>
@@ -234,12 +371,13 @@ function render() {
     const need = DATA.league.starters[pos];
     const names = have.map(p => escapeHtml(p.name)).join(", ") || "—";
     return `<div class="slot ${have.length >= need ? "full" : ""}">
-      <span><b>${pos}</b> ${names}</span><span>${have.length}/${need}</span></div>`;
+      <span><b>${pos}</b> ${names}</span>
+      <span class="v">${have.length}/${need}</span></div>`;
   }).join("");
 
   document.getElementById("levels").innerHTML = POSITIONS.map(pos =>
     `<div class="slot"><span><b>${pos}</b></span>
-     <span>${levels[pos].toFixed(0)} pts</span></div>`).join("");
+     <span class="v">${levels[pos].toFixed(0)} pts</span></div>`).join("");
 
   save();
 }

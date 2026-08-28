@@ -336,10 +336,15 @@ a last-season ranking buries them while a three-season projection doesn't.
 
 ## The draft-day tool
 
-One self-contained HTML file, 209 KB, no dependencies and no server. The data
+One self-contained HTML file, ~240 KB, no dependencies and no server. The data
 is **embedded rather than fetched**, because fetching a sibling JSON is blocked
 by CORS from `file://` — and a draft tool that only works online is one that
 fails in a basement on bad wifi.
+
+Styled after a 1970s NHL programme: newsprint ground, sweater-stripe bands,
+arena-signage capitals and scoreboard numerals. **No web fonts** — the display
+face is built from stacks that ship with the OS, because loading a font would
+break the offline promise above for the sake of a typeface.
 
 - One click to mark a player taken, one to claim them; undo for misclicks
 - Instant search and position filters
