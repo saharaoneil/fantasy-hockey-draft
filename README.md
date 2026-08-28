@@ -430,13 +430,18 @@ break the offline promise above for the sake of a typeface.
   Jaccob/Josiah Slavin, and picking one at random would quietly mark the wrong
   player gone.
 
-  `tools/yahoo-draft-scrape.js` automates the copy from a Yahoo draft room.
-  Paste it into the Console with the Picks view open and it copies one line
-  per pick. It finds the list **structurally** — the element with the most
-  direct children each holding one name — because Yahoo's CSS classes are
-  generated (`W(150px)`, `Fxg(1)`) and would break silently, most likely
-  mid-draft. Manual paste keeps working if it ever does break, which is why
-  the matcher was built first and the scraper second.
+  **Copy by hand — this deliberately does not scrape.** A working scraper for
+  Yahoo's draft log was built and then removed: their fantasy terms prohibit
+  "any automated services or routines including… scrapers to access and/or
+  collect information on any Yahoo site without explicit written consent",
+  with account termination as a stated penalty. Selecting the pick list and
+  pressing ⌘C is a person using the provided interface; a script doing it is
+  not, and shipping one in a public repo would be instructing other people to
+  breach it too.
+
+  This is why the matcher was built first and the automation second. The
+  matcher needs nothing from Yahoo's markup, so it survived the decision to
+  drop the part that did.
 - A collapsible **column legend** — VORP, ADP, Gap and Δ are not self-evident,
   and it states plainly whether ADP is real or the stand-in, since that changes
   how much the Gap column is worth. Open on a first visit, remembers being shut
