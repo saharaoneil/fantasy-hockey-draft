@@ -192,6 +192,31 @@
   .foot b { color: var(--ink); }
   .empty { padding: 22px; text-align: center; color: var(--muted); }
 
+  /* Bulk pick entry. Same collapsible treatment as the legend. */
+  .sync { border-bottom: 2px solid var(--ink); background: var(--paper); }
+  .sync > summary {
+    cursor: pointer; list-style: none; padding: 6px 12px 5px;
+    font-family: var(--display); font-size: 14px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--ink);
+  }
+  .sync > summary::-webkit-details-marker { display: none; }
+  .sync > summary::before { content: "▸ "; }
+  .sync[open] > summary::before { content: "▾ "; }
+  .sync > summary:hover { background: var(--gold); }
+  .sync .body { padding: 4px 12px 11px; }
+  .sync textarea {
+    width: 100%; min-height: 88px; resize: vertical;
+    font-family: var(--score); font-size: 12.5px; padding: 7px 9px;
+    background: var(--ice); color: var(--ink);
+    border: 2px solid var(--ink); border-radius: 0;
+  }
+  .sync .row { display: flex; gap: 7px; margin-top: 8px; flex-wrap: wrap; }
+  .sync .hint { font-size: 12px; color: var(--muted); margin: 0 0 7px; }
+  .sync .report { margin-top: 8px; font-size: 12.5px; }
+  .sync .report .ok { color: #1f7a3d; font-weight: 700; }
+  .sync .report .bad { color: var(--red); font-weight: 700; }
+  .sync .report ul { margin: 4px 0 0; padding-left: 18px; color: var(--muted); }
+
   /* Category breakdown, categories format only. A single total cannot tell a
      specialist from a generalist, and this is what does. */
   td.name { cursor: default; }
@@ -270,6 +295,24 @@
 <div class="layout">
   <div class="panel">
     <h2 id="count"></h2>
+    <details class="sync" id="sync">
+      <summary>Paste picks from your draft room</summary>
+      <div class="body">
+        <p class="hint">
+          Copy the drafted-players list out of your draft room and paste it
+          here. Pick numbers, team codes and positions around the names are
+          ignored — only the names have to be in there.
+        </p>
+        <textarea id="syncText" spellcheck="false"
+          placeholder="1. (1) Connor McDavid EDM - C&#10;2. (2) Nathan MacKinnon COL - C&#10;..."></textarea>
+        <div class="row">
+          <button id="syncTaken">Mark taken</button>
+          <button id="syncMine">Mark as mine</button>
+          <button id="syncClear">Clear</button>
+        </div>
+        <div class="report" id="syncReport"></div>
+      </div>
+    </details>
     <details class="legend" id="legend">
       <summary>What the columns mean</summary>
       <dl>
@@ -589,6 +632,134 @@ function categoryBreakdown(player) {
   }).filter(Boolean).join("");
   return `<div class="cats-grid">${cells}</div>`;
 }
+
+/* Name matching, mirroring fantasy/adp.py's normalize_name. Both the board
+   names and the pasted text go through this one function, so there is no
+   second implementation to drift from the first -- and anything it cannot
+   match is reported rather than dropped. */
+const NAME_SUFFIXES = new Set(["jr", "sr", "ii", "iii", "iv"]);
+
+function normalizeName(value) {
+  return String(value)
+    .normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/-/g, " ")
+    .replace(/[^a-z\s]/g, " ")
+    .split(/\s+/).filter(w => w && !NAME_SUFFIXES.has(w)).join(" ");
+}
+
+// Built once. Two players can share a name -- there have been two Sebastian
+// Ahos -- so a key maps to a list and an ambiguous hit is reported, never
+// guessed at.
+const nameIndex = (() => {
+  const index = new Map();
+  for (const p of DATA.players) {
+    const key = normalizeName(p.name || "");
+    if (!key) continue;
+    if (!index.has(key)) index.set(key, []);
+    index.get(key).push(p.playerId);
+  }
+  return index;
+})();
+
+/* Find every player named in one line of a draft log.
+
+   Rather than parsing a format -- every draft room writes a different one --
+   this slides over the line's words looking for known names. Pick numbers,
+   team codes and position labels are simply never matched, so they cost
+   nothing and need no stripping.
+
+   It returns ALL the names in a line, not just one, because a line is as
+   likely to be "McDavid, MacKinnon, Makar" as "Auston Matthews, TOR, C".
+   Longer matches win and consume their words, so a two-word name is not also
+   read as a one-word one.
+
+   A run of a single word is never matched: every player key here is at least
+   two words, and allowing one would let team codes and initials collide with
+   players. */
+const MAX_NAME_WORDS = 4;
+
+function playersInLine(line) {
+  const words = normalizeName(line).split(" ").filter(Boolean);
+  const found = [];
+
+  for (let start = 0; start < words.length; start += 1) {
+    for (let len = Math.min(MAX_NAME_WORDS, words.length - start); len >= 2; len -= 1) {
+      const key = words.slice(start, start + len).join(" ");
+      const ids = nameIndex.get(key);
+      if (ids) { found.push({ start, len, ids, key }); break; }
+    }
+  }
+
+  // Longest first, and a name consumes its words so nothing is counted twice.
+  found.sort((a, b) => b.len - a.len);
+  const used = new Set();
+  const kept = [];
+  for (const hit of found) {
+    const span = [];
+    for (let i = hit.start; i < hit.start + hit.len; i += 1) span.push(i);
+    if (span.some(i => used.has(i))) continue;
+    span.forEach(i => used.add(i));
+    kept.push(hit);
+  }
+  return kept;
+}
+
+function applyPastedPicks(asMine) {
+  const text = document.getElementById("syncText").value;
+  // Newlines and semicolons separate records; commas do NOT. Draft rooms use
+  // commas inside a line -- "Auston Matthews, TOR, C" -- far more often than
+  // between them, and splitting on them shredded exactly those lines.
+  const lines = text.split(/[\n;]+/).map(l => l.trim()).filter(Boolean);
+  const report = document.getElementById("syncReport");
+
+  if (!lines.length) {
+    report.innerHTML = `<span class="bad">Nothing pasted.</span>`;
+    return;
+  }
+
+  let added = 0, already = 0;
+  const unmatched = [], ambiguous = [];
+
+  for (const line of lines) {
+    const hits = playersInLine(line);
+    if (!hits.length) { unmatched.push(line); continue; }
+    for (const hit of hits) {
+      if (hit.ids.length > 1) { ambiguous.push(`${line} (${hit.key})`); continue; }
+      const id = hit.ids[0];
+      if (taken.has(id)) { already += 1; continue; }
+      taken.add(id);
+      if (asMine) mine.add(id);
+      history.push({ id, isMine: !!asMine });
+      added += 1;
+    }
+  }
+
+  const parts = [
+    `<span class="ok">Marked ${added} player${added === 1 ? "" : "s"}` +
+    `${asMine ? " as yours" : " taken"}.</span>`,
+  ];
+  if (already) parts.push(`${already} already gone.`);
+  if (ambiguous.length) {
+    parts.push(`<span class="bad">${ambiguous.length} ambiguous</span> ` +
+      `(more than one player shares that name):<ul>` +
+      ambiguous.slice(0, 6).map(l => `<li>${escapeHtml(l)}</li>`).join("") + `</ul>`);
+  }
+  if (unmatched.length) {
+    parts.push(`<span class="bad">${unmatched.length} not recognised</span>:<ul>` +
+      unmatched.slice(0, 6).map(l => `<li>${escapeHtml(l)}</li>`).join("") +
+      (unmatched.length > 6 ? `<li>…and ${unmatched.length - 6} more</li>` : "") +
+      `</ul>`);
+  }
+  report.innerHTML = parts.join(" ");
+  render();
+}
+
+document.getElementById("syncTaken").onclick = () => applyPastedPicks(false);
+document.getElementById("syncMine").onclick = () => applyPastedPicks(true);
+document.getElementById("syncClear").onclick = () => {
+  document.getElementById("syncText").value = "";
+  document.getElementById("syncReport").innerHTML = "";
+};
 
 const legend = document.getElementById("legend");
 const LEGEND_KEY = "draft-board-legend-open";

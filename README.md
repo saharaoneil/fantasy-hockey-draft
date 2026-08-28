@@ -416,6 +416,17 @@ break the offline promise above for the sake of a typeface.
 - One click to mark a player taken, one to claim them; undo for misclicks
 - Instant search and position filters
 - Roster panel showing which slots you have filled
+- **Paste picks from your draft room** — copy the drafted-players list out of
+  Yahoo/ESPN/Fantrax and paste it in. Pick numbers, team codes and positions
+  around the names are ignored, several names on one line all match, and
+  accents are folded (`Tim Stutzle` finds `Tim Stützle`). Anything it cannot
+  match is **reported, not dropped**, so a silent miss cannot leave a player
+  wrongly available.
+
+  This is the piece that removes most of the alt-tab friction. It is also the
+  receiving end for a future bookmarklet that scrapes the draft page — and if
+  that ever breaks against changed markup, manual paste still works, which is
+  why it was built first.
 - A collapsible **column legend** — VORP, ADP, Gap and Δ are not self-evident,
   and it states plainly whether ADP is real or the stand-in, since that changes
   how much the Gap column is worth. Open on a first visit, remembers being shut
