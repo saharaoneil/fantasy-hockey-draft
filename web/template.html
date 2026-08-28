@@ -191,6 +191,37 @@
   }
   .foot b { color: var(--ink); }
   .empty { padding: 22px; text-align: center; color: var(--muted); }
+
+  /* Column legend. Open on a first visit, and it remembers being shut, since
+     the terms only need explaining once but the screen space is wanted every
+     pick after that. */
+  .legend { border-bottom: 2px solid var(--ink); background: var(--paper); }
+  .legend > summary {
+    cursor: pointer; list-style: none; padding: 6px 12px 5px;
+    font-family: var(--display); font-size: 14px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--ink);
+  }
+  .legend > summary::-webkit-details-marker { display: none; }
+  .legend > summary::before { content: "▸ "; }
+  .legend[open] > summary::before { content: "▾ "; }
+  .legend > summary:hover { background: var(--gold); }
+  .legend dl {
+    margin: 0; padding: 2px 12px 11px;
+    display: grid; grid-template-columns: auto 1fr; gap: 3px 10px;
+    font-size: 12.5px; line-height: 1.35;
+  }
+  .legend dt {
+    font-family: var(--display); font-size: 14px; letter-spacing: .05em;
+    color: var(--navy); white-space: nowrap;
+  }
+  .legend dd { margin: 0; color: var(--muted); }
+  .legend dd b { color: var(--ink); }
+  /* The display faces are condensed sports lettering and carry no Greek, so a
+     delta falls back to something that reads as a lambda. Any symbol outside
+     basic Latin gets the body face. */
+  /* `.legend dt` is a class plus an element, so a bare `.sym` loses to it on
+     specificity and the override silently does nothing. Named explicitly. */
+  .legend dt.sym, th .sym, .sym { font-family: var(--body); font-weight: 700; }
 </style>
 </head>
 <body>
@@ -216,13 +247,32 @@
 <div class="layout">
   <div class="panel">
     <h2 id="count"></h2>
+    <details class="legend" id="legend">
+      <summary>What the columns mean</summary>
+      <dl>
+        <dt>VORP</dt>
+        <dd><b>Draft on this one.</b> Points above the last starter who gets
+            drafted at that position — what a player adds over whoever you would
+            have taken instead. A winger can outrank a centre who scores more,
+            because centres are deeper.</dd>
+        <dt>ADP</dt>
+        <dd>Where the player typically goes. <span id="adpNote"></span></dd>
+        <dt>Gap</dt>
+        <dd>ADP rank minus value rank. <b>Positive means he is sliding</b> — you
+            can wait. Greyed out for players whose value is negative, where a
+            big gap is noise rather than a bargain.</dd>
+        <dt class="sym">Δ</dt>
+        <dd>Places moved since the draft started, as positions drain and
+            replacement levels shift. Blank until you start marking picks.</dd>
+      </dl>
+    </details>
     <div class="scroll">
     <table>
       <thead><tr>
         <th class="num">#</th><th>Player</th><th>Pos</th>
         <th class="num drop">Age</th><th class="num drop2">Pts</th><th class="num">VORP</th>
         <th class="num drop2">ADP</th><th class="num drop3">Gap</th>
-        <th class="num drop">Δ</th><th></th>
+        <th class="num drop"><span class="sym">Δ</span></th><th></th>
       </tr></thead>
       <tbody id="rows"></tbody>
     </table>
@@ -465,6 +515,22 @@ document.getElementById("tabs").addEventListener("click", e => {
     b.classList.toggle("on", b.dataset.pos === filter));
   render();
 });
+
+const legend = document.getElementById("legend");
+const LEGEND_KEY = "draft-board-legend-open";
+try {
+  legend.open = localStorage.getItem(LEGEND_KEY) !== "0";
+} catch (e) { legend.open = true; }
+legend.addEventListener("toggle", () => {
+  try { localStorage.setItem(LEGEND_KEY, legend.open ? "1" : "0"); } catch (e) {}
+});
+
+// Say plainly whether ADP is real or the stand-in, since it changes how much
+// the Gap column is worth.
+document.getElementById("adpNote").textContent = DATA.adp_source
+  ? `Source: ${DATA.adp_source}.`
+  : "Here it is a stand-in — last season's finish, interleaved by position — "
+    + "not real draft data, so read Gap as a direction rather than a number.";
 
 document.getElementById("season").textContent =
   `${DATA.target_season}-${String(DATA.target_season + 1).slice(2)}`;

@@ -180,6 +180,7 @@ def main() -> int:
     draftable = args.teams * sum(value.DEFAULT_LEAGUE.starters.values())
     if args.adp_csv:
         source = f"ADP from {args.adp_csv}"
+        adp_source = str(args.adp_csv)
         match = adp_mod.join_adp(board, adp_mod.load_adp_csv(args.adp_csv))
         print(f"\nmatched {match.matched} of "
               f"{match.matched + len(match.unmatched_names)} ADP names "
@@ -190,6 +191,7 @@ def main() -> int:
         board = match.frame
     else:
         source = "last season's finish (a proxy for consensus, NOT real ADP)"
+        adp_source = None  # the page says so plainly rather than implying data
         actuals = skaters[skaters["season"] == LAST_SEASON].copy()
         goalie_actuals = goalies[goalies["season"] == LAST_SEASON].copy()
         for group, group_stats in ((actuals, SKATER_STATS), (goalie_actuals, GOALIE_STATS)):
@@ -259,6 +261,8 @@ def main() -> int:
         json.dumps(
             {
                 "target_season": args.target_season,
+                "format": args.format,
+                "adp_source": adp_source,
                 "league": {"teams": args.teams,
                            "starters": dict(league.starters)},
                 "scoring": dict(value.DEFAULT_SCORING.weights),

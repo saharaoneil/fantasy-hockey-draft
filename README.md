@@ -402,6 +402,9 @@ break the offline promise above for the sake of a typeface.
 - One click to mark a player taken, one to claim them; undo for misclicks
 - Instant search and position filters
 - Roster panel showing which slots you have filled
+- A collapsible **column legend** — VORP, ADP, Gap and Δ are not self-evident,
+  and it states plainly whether ADP is real or the stand-in, since that changes
+  how much the Gap column is worth. Open on a first visit, remembers being shut
 - **Targets** filter: available players the model rates well above where
   they're going
 - ADP and gap columns, with the gap greyed out for players whose value is
