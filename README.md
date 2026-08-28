@@ -1,6 +1,7 @@
 # fantasy-hockey-draft
 
-A draft board built on what's actually predictable, not on what happened last year.
+A draft board built on what's actually predictable, not on what happened last
+year — and backtested to check that the distinction is worth anything.
 
 **[Open the draft board →](https://saharaoneil.github.io/fantasy-hockey-draft/)**
 
@@ -9,6 +10,7 @@ python3 -m pip install -r requirements.txt
 python3 scripts/analyze_predictability.py --out out/   # the finding
 python3 scripts/build_draft_board.py --out out/        # the board
 python3 scripts/build_draft_page.py                    # the draft-day tool
+python3 scripts/run_backtest.py --out out/             # does it actually work?
 ```
 
 Pulls 12 NHL seasons from the league's public stats API, measures how much of
@@ -227,13 +229,59 @@ fantasy/predictability.py  year-over-year persistence, measured honestly
 fantasy/projections.py     regress each stat by how sticky it actually is
 fantasy/value.py           scoring, replacement level, VORP
 fantasy/adp.py             draft position, name matching, and the value gap
+fantasy/backtest.py        holdout testing against the naive baseline
 scripts/analyze_predictability.py   the finding: tables and the chart
 scripts/build_draft_board.py        the board: CSV and JSON
 scripts/build_draft_page.py         bake the board into one HTML file
+scripts/run_backtest.py             holdout test and component ablation
 ```
 
 `draft_board.json` is the build artifact the page is baked from, so the model
 stays offline and the tool stays a fast view over it.
+
+## Does it actually work?
+
+Backtested against eight holdout seasons (2018-19 through 2025-26). Each season
+is projected using **only the seasons before it** — including when measuring
+the reliability figures and the age curve, since measuring those over all
+twelve seasons and then testing on one of them would let the model see its own
+answer.
+
+![Backtest: rank correlation by holdout season](out/backtest.png)
+
+| method | rank correlation | MAE | top-100 hit rate |
+|---|---|---|---|
+| **Model (regressed + aged)** | **0.757** | 40.1 | 0.684 |
+| Regressed, no age curve | 0.739 | 40.5 | 0.666 |
+| Last season's totals | 0.723 | 41.7 | 0.678 |
+| 3-season average, no regression | 0.712 | 41.5 | 0.656 |
+
+The model beats the naive baseline in **8 of 8** seasons. The margin is real
+but modest — **+0.034** rank correlation. Hockey is noisy and this family of
+model is hard to improve on; anyone claiming a large edge here is measuring
+something wrong.
+
+### What each piece actually contributes
+
+| component | contribution |
+|---|---|
+| more history alone | **−0.011** |
+| the regression | **+0.027** |
+| the age curve | **+0.018** |
+
+**More history on its own makes it worse.** A three-season average without
+regression (0.712) is *below* just using last season (0.723) — extra seasons
+add stale information about players whose role has changed, and averaging it in
+blurs the signal.
+
+The regression is what makes the extra history useful. It isn't a refinement on
+top of a longer average; it's the thing that turns a longer average from a
+liability into an improvement. That's the project's central claim, and it's the
+one the backtest was built to be able to falsify.
+
+The ablation runs by default rather than on request, because reporting only the
+final model would leave every component unjustified — and one of them turns out
+to be negative.
 
 ## ADP, and why there isn't a feed for it
 

@@ -154,6 +154,11 @@ def measure(
             if usable.sum() < 30:
                 continue
             rho = stats.spearmanr(now[usable], nxt[usable]).statistic
+            if not np.isfinite(rho):
+                # Constant input -- every player identical on this stat. Not a
+                # measurement, so it is omitted rather than reported as a
+                # number that would then flow into a projection as NaN.
+                continue
             results.append(
                 StatResult(
                     stat=stat,

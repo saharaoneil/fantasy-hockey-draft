@@ -12,3 +12,4 @@ data/
 # Generated tables and charts, except the one the README shows.
 out/*
 !out/predictability.png
+!out/backtest.png
