@@ -55,6 +55,19 @@ import pandas as pd
 MIN_AGE_SAMPLE = 40
 DEFAULT_SEASON_WEIGHTS = (5.0, 4.0, 3.0)
 
+# Stats that are already rates rather than counts. Everything else is a season
+# total that gets divided by games; these are not, and dividing them produces
+# nonsense -- a save percentage of .905 came out as .0206 before this existed,
+# because it was being treated as 44 games' worth of something.
+#
+# They are turned into pseudo-totals (rate x games) on the way in, which puts
+# them through exactly the same regression as a counting stat and makes the
+# league figure a games-weighted mean rate, which is the right prior.
+RATE_STATS = frozenset({
+    "savePct", "goalsAgainstAverage", "shootingPct", "faceoffWinPct",
+    "toiPerGameMinutes", "pointsPerGame",
+})
+
 
 class ProjectionError(Exception):
     """The projection could not be made from what was supplied."""
@@ -223,11 +236,18 @@ def project(
             "analysis first rather than guessing a value"
         )
 
-    weighted = _weighted_history(history, stats, config=config,
+    # Rate stats become rate x games so the regression below sees a comparable
+    # quantity. Without this a rate is divided by games a second time.
+    prepared = history.copy()
+    for stat in stats:
+        if stat in RATE_STATS:
+            prepared[stat] = prepared[stat] * prepared["gamesPlayed"]
+
+    weighted = _weighted_history(prepared, stats, config=config,
                                  target_season=target_season)
 
     latest = (
-        history.sort_values("season")
+        prepared.sort_values("season")
         .groupby("playerId")
         .last()[["position", "age"] if "age" in history.columns else ["position"]]
     )
@@ -235,8 +255,8 @@ def project(
 
     league_rates = {}
     for stat in stats:
-        totals = history.groupby("position")[stat].sum()
-        games = history.groupby("position")["gamesPlayed"].sum()
+        totals = prepared.groupby("position")[stat].sum()
+        games = prepared.groupby("position")["gamesPlayed"].sum()
         league_rates[stat] = (totals / games).to_dict()
 
     for stat in stats:

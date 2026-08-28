@@ -19,14 +19,15 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fantasy import adp as adp_mod  # noqa: E402
+from fantasy import categories as cats  # noqa: E402
 from fantasy import nhl, predictability as pred, projections, value  # noqa: E402
 
 FIRST_SEASON = 2014
 LAST_SEASON = 2025
 
 SKATER_STATS = ("goals", "assists", "shots", "hits", "blockedShots",
-                "ppPoints", "penaltyMinutes")
-GOALIE_STATS = ("wins", "saves", "shutouts")
+                "ppPoints", "penaltyMinutes", "plusMinus")
+GOALIE_STATS = ("wins", "saves", "shutouts", "savePct", "goalsAgainstAverage")
 
 
 def _measured_reliability(frame, stats, *, id_column, min_games):
@@ -42,6 +43,12 @@ def main() -> int:
     parser.add_argument("--out", type=Path, default=Path("out"))
     parser.add_argument("--cache", type=Path, default=Path("data/raw"))
     parser.add_argument("--teams", type=int, default=12)
+    parser.add_argument(
+        "--format", choices=("points", "categories"), default="points",
+        help="points sums weighted stats; categories z-scores each column "
+             "against the draftable pool, which is how most leagues are "
+             "actually scored",
+    )
     parser.add_argument(
         "--adp-csv", type=Path, default=None,
         help="two-column CSV of name,adp from your platform. Without it the "
@@ -108,13 +115,41 @@ def main() -> int:
         reliability=goalie_reliability["gamesPlayed"],
     ).reindex(goalie_board["playerId"]).to_numpy()
 
-    # Scored per position group, then concatenated. The other order leaves each
-    # group with NaN in the other's stat columns and poisons every total.
-    for group in (skater_board, goalie_board):
-        group["projected_points"] = value.fantasy_points(
-            group, value.DEFAULT_SCORING, games_column="projected_games"
+    if args.format == "categories":
+        # Goalie rate categories need their volume columns, or a backup's .930
+        # gets priced like a starter's.
+        goalie_board["shotsAgainst"] = (
+            goalie_board["saves_rate"].fillna(0) * goalie_board["projected_games"]
+            / goalie_board["savePct_rate"].replace(0, pd.NA)
+        ).fillna(0)
+
+        # League-wide drafted counts, which size the standardisation pools as
+        # well as the cross-group scaling.
+        skater_drafted = args.teams * sum(
+            v for k, v in value.DEFAULT_LEAGUE.starters.items() if k != "G"
         )
-    board = pd.concat([skater_board, goalie_board], ignore_index=True)
+        goalie_drafted = args.teams * value.DEFAULT_LEAGUE.starters["G"]
+        board = cats.value_groups(
+            {"skaters": skater_board, "goalies": goalie_board},
+            {"skaters": cats.DEFAULT_SKATER_CATEGORIES,
+             "goalies": cats.DEFAULT_GOALIE_CATEGORIES},
+            {"skaters": skater_drafted, "goalies": goalie_drafted},
+        )
+        board["projected_points"] = board["category_value"]
+        print(f"\ncategories format: "
+              f"{len(cats.DEFAULT_SKATER_CATEGORIES)} skater columns, "
+              f"{len(cats.DEFAULT_GOALIE_CATEGORIES)} goalie columns")
+        for name, group in board.groupby("value_group"):
+            print(f"  {name:<9} roster-slot weight "
+                  f"{group['group_scale'].iloc[0]:.2f}x")
+    else:
+        # Scored per position group, then concatenated. The other order leaves
+        # each group with NaN in the other's stat columns and poisons every total.
+        for group in (skater_board, goalie_board):
+            group["projected_points"] = value.fantasy_points(
+                group, value.DEFAULT_SCORING, games_column="projected_games"
+            )
+        board = pd.concat([skater_board, goalie_board], ignore_index=True)
 
     names = pd.concat([
         skaters[["playerId", "skaterFullName"]].rename(
@@ -185,6 +220,13 @@ def main() -> int:
     for col in ("age", "projected_games", "projected_points", "replacement", "vorp"):
         top[col] = top[col].round(1)
     print(top.to_string(index=False))
+
+    if args.format == "categories":
+        print("\nWHAT THE TOP OF THE BOARD ACTUALLY WINS YOU")
+        every = (tuple(cats.DEFAULT_SKATER_CATEGORIES)
+                 + tuple(cats.DEFAULT_GOALIE_CATEGORIES))
+        print(cats.category_contributions(board, every, limit=8)
+              .to_string(index=False))
 
     print("\nTARGETS - the model likes them more than the room does")
     show = ["name", "position", "vorp", "adp", "value_rank", "gap"]

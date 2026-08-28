@@ -8,7 +8,8 @@ year — and backtested to check that the distinction is worth anything.
 ```bash
 python3 -m pip install -r requirements.txt
 python3 scripts/analyze_predictability.py --out out/   # the finding
-python3 scripts/build_draft_board.py --out out/        # the board
+python3 scripts/build_draft_board.py --out out/        # points-league board
+python3 scripts/build_draft_board.py --format categories --out out/
 python3 scripts/build_draft_page.py                    # the draft-day tool
 python3 scripts/run_backtest.py --out out/             # does it actually work?
 ```
@@ -186,6 +187,8 @@ you get.
 - **Goalie ages are missing**; the bios endpoint pulled here is skater-only, so
   no age curve is applied to goalies.
 - **ADP is a proxy unless you supply real numbers** — see below.
+- **The draft page is built from the points-league board.** Categories works on
+  the command line; wiring `--format` through to the page is not done.
 
 ## Method
 
@@ -228,6 +231,7 @@ fantasy/nhl.py             pull and cache season stats from the NHL API
 fantasy/predictability.py  year-over-year persistence, measured honestly
 fantasy/projections.py     regress each stat by how sticky it actually is
 fantasy/value.py           scoring, replacement level, VORP
+fantasy/categories.py      z-score valuation for categories leagues
 fantasy/adp.py             draft position, name matching, and the value gap
 fantasy/backtest.py        holdout testing against the naive baseline
 scripts/analyze_predictability.py   the finding: tables and the chart
@@ -282,6 +286,55 @@ one the backtest was built to be able to falsify.
 The ablation runs by default rather than on request, because reporting only the
 final model would leave every component unjustified — and one of them turns out
 to be negative.
+
+## Categories leagues
+
+Most fantasy hockey — certainly on Yahoo — is played in **categories**, not
+points. A weighted points total misprices that badly: you don't win a
+categories league by accumulating a number, you win it column by column. A
+300-hit grinder who scores 30 points is worthless in a points league and a real
+asset in a hits column.
+
+`--format categories` switches to the standard z-score model: standardise each
+column against the draftable pool, sum, rank on that. Three things a naive
+implementation gets wrong, all handled here — and two of them I got wrong first
+and had to measure my way out of.
+
+**The pool must be sized per group.** A league has ~940 skaters and 98 goalies.
+A single pool size standardises skaters against their top tier and goalies
+against *every backup in the league*, which drags the goalie mean down and
+inflates every starter. Measured, that alone put goalies in the top eight
+places on the board. The pool for a group is the number of that group actually
+drafted, plus a bench allowance.
+
+**Rate categories are not counting categories.** A goalie at .930 over 200
+shots and one at .930 over 2,000 shots are not equally valuable — the second
+decides the column, the first barely moves it. Z-scoring the rate ignores
+volume and massively overrates backups, so rate columns are scored on
+*impact*: distance from the pool's rate times the volume it's done over.
+
+**Cross-group scaling is where I overcorrected.** Skaters and goalies are
+standardised separately, so I added a `group_scale` dividing by each group's
+share of the roster — the argument being that goalies control a third of the
+standings from a sixth of the roster. Turning it on put goalies in all ten top
+places, which no real draft resembles. It double-counts: summing z already
+accounts for goalies scoring in fewer columns, and the division amplifies them
+again. It's **off by default** but kept and documented, because the underlying
+argument isn't wrong — only the magnitude was.
+
+Plain summed z gives a board that looks like a real categories draft: two elite
+goalies in the top three, everyone else interleaved.
+
+### A latent bug this exposed
+
+`projections.project` treated every stat as a counting stat and divided it by
+games played. Save percentage came out as **.0206** instead of .905.
+
+The bug predates categories and had been shipped — the points-league format
+never scored a rate stat, so nothing ever consumed the broken column.
+`RATE_STATS` now converts rates to rate×games on the way in, which puts them
+through the same regression and makes the league prior a games-weighted mean
+rate. Save % now projects to .888–.912 and GAA to 2.42–3.35.
 
 ## ADP, and why there isn't a feed for it
 
