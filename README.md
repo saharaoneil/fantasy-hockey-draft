@@ -187,8 +187,7 @@ you get.
 - **Goalie ages are missing**; the bios endpoint pulled here is skater-only, so
   no age curve is applied to goalies.
 - **ADP is a proxy unless you supply real numbers** — see below.
-- **The draft page is built from the points-league board.** Categories works on
-  the command line; wiring `--format` through to the page is not done.
+- Goalies have no age curve; the bios pull is skater-only.
 
 ## Method
 
@@ -324,6 +323,21 @@ argument isn't wrong — only the magnitude was.
 
 Plain summed z gives a board that looks like a real categories draft: two elite
 goalies in the top three, everyone else interleaved.
+
+### The page follows the format
+
+Build the board with `--format categories` and rebuild the page; it reads the
+format from the board and adapts — the value column becomes `Z`, the legend
+rewords, and **clicking a player opens which columns he actually wins you**:
+
+```
+Kucherov   G +1.7   A +3.3   PPP +2.5   SOG +1.3   HIT −0.9   BLK −0.8   +/- +1.8
+```
+
+That is the thing z-scores do and a points total cannot. Two players on the
+same total can be completely different picks — one wins three columns outright,
+the other is mildly above average everywhere — and in a categories league that
+distinction decides your roster.
 
 ### A latent bug this exposed
 

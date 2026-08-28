@@ -192,6 +192,29 @@
   .foot b { color: var(--ink); }
   .empty { padding: 22px; text-align: center; color: var(--muted); }
 
+  /* Category breakdown, categories format only. A single total cannot tell a
+     specialist from a generalist, and this is what does. */
+  td.name { cursor: default; }
+  body.cats td.name { cursor: pointer; }
+  body.cats td.name::after { content: " ▸"; color: var(--muted); font-weight: 400; }
+  body.cats tr.open td.name::after { content: " ▾"; }
+  tr.detail td { background: var(--paper); padding: 8px 10px 10px; }
+  .cats-grid {
+    display: flex; flex-wrap: wrap; gap: 5px;
+  }
+  .cat {
+    display: flex; align-items: baseline; gap: 5px;
+    border: 1.5px solid var(--ink); padding: 2px 6px 1px;
+    background: var(--ice); font-size: 12px;
+  }
+  .cat .k {
+    font-family: var(--display); font-size: 12.5px; letter-spacing: .05em;
+    text-transform: uppercase;
+  }
+  .cat .z { font-family: var(--score); font-size: 12px; }
+  .cat.hi { background: #d8ecd8; border-color: #1f7a3d; }
+  .cat.lo { background: #f3dcdc; border-color: var(--red); }
+
   /* Column legend. Open on a first visit, and it remembers being shut, since
      the terms only need explaining once but the screen space is wanted every
      pick after that. */
@@ -251,10 +274,8 @@
       <summary>What the columns mean</summary>
       <dl>
         <dt>VORP</dt>
-        <dd><b>Draft on this one.</b> Points above the last starter who gets
-            drafted at that position — what a player adds over whoever you would
-            have taken instead. A winger can outrank a centre who scores more,
-            because centres are deeper.</dd>
+        <dd><b>Draft on this one.</b> <span id="vorpNote"></span> A winger can
+            outrank a centre who rates higher, because centres are deeper.</dd>
         <dt>ADP</dt>
         <dd>Where the player typically goes. <span id="adpNote"></span></dd>
         <dt>Gap</dt>
@@ -270,7 +291,7 @@
     <table>
       <thead><tr>
         <th class="num">#</th><th>Player</th><th>Pos</th>
-        <th class="num drop">Age</th><th class="num drop2">Pts</th><th class="num">VORP</th>
+        <th class="num drop">Age</th><th class="num drop2" id="valueHead">Pts</th><th class="num">VORP</th>
         <th class="num drop2">ADP</th><th class="num drop3">Gap</th>
         <th class="num drop"><span class="sym">Δ</span></th><th></th>
       </tr></thead>
@@ -395,7 +416,7 @@ function render() {
     const shift = (baselineRank.get(p.playerId) || 0) - liveRank.get(p.playerId);
     const arrow = shift > 2 ? `<span class="rise">▲${shift}</span>`
                 : shift < -2 ? `<span class="fall">▼${-shift}</span>` : "";
-    return `<tr class="${mine.has(p.playerId) ? "mine" : ""}">
+    return `<tr class="${mine.has(p.playerId) ? "mine" : ""}" data-id="${p.playerId}">
       <td class="num">${liveRank.get(p.playerId)}</td>
       <td class="name">${escapeHtml(p.name || "—")}</td>
       <td><span class="pos ${p.position}">${p.position}</span></td>
@@ -458,9 +479,31 @@ function pick(id, isMine) {
 
 document.getElementById("rows").addEventListener("click", e => {
   const t = e.target.closest("button");
-  if (!t) return;
-  if (t.dataset.mine) pick(Number(t.dataset.mine), true);
-  else if (t.dataset.taken) pick(Number(t.dataset.taken), false);
+  if (t) {
+    if (t.dataset.mine) pick(Number(t.dataset.mine), true);
+    else if (t.dataset.taken) pick(Number(t.dataset.taken), false);
+    return;
+  }
+  if (!IS_CATS) return;
+
+  // Clicking a name opens which columns that player actually wins you.
+  const cell = e.target.closest("td.name");
+  if (!cell) return;
+  const row = cell.parentElement;
+  const next = row.nextElementSibling;
+  if (next && next.classList.contains("detail")) {
+    next.remove();
+    row.classList.remove("open");
+    return;
+  }
+  const player = byId.get(Number(row.dataset.id));
+  if (!player) return;
+  const detail = document.createElement("tr");
+  detail.className = "detail";
+  detail.innerHTML =
+    `<td colspan="${row.children.length}">${categoryBreakdown(player)}</td>`;
+  row.classList.add("open");
+  row.after(detail);
 });
 
 document.getElementById("targets").onclick = (e) => {
@@ -516,6 +559,37 @@ document.getElementById("tabs").addEventListener("click", e => {
   render();
 });
 
+const IS_CATS = DATA.format === "categories";
+document.body.classList.toggle("cats", IS_CATS);
+
+const VALUE_LABEL = DATA.value_label || "Pts";
+document.getElementById("valueHead").textContent = VALUE_LABEL;
+document.getElementById("vorpNote").textContent = IS_CATS
+  ? "Standard deviations of edge above the last starter drafted at that "
+    + "position, summed across every scoring column."
+  : "Points above the last starter who gets drafted at that position — what a "
+    + "player adds over whoever you would have taken instead.";
+
+/* Pretty names for the category columns, so the breakdown reads like a
+   scoresheet rather than like API field names. */
+const CAT_LABELS = {
+  goals: "G", assists: "A", ppPoints: "PPP", shots: "SOG", hits: "HIT",
+  blockedShots: "BLK", penaltyMinutes: "PIM", plusMinus: "+/-",
+  wins: "W", saves: "SV", shutouts: "SHO", savePct: "SV%",
+  goalsAgainstAverage: "GAA",
+};
+
+function categoryBreakdown(player) {
+  const cells = (DATA.categories || []).map(stat => {
+    const z = player[`z_${stat}`];
+    if (z == null || Number.isNaN(z)) return "";
+    const cls = z >= 1 ? " hi" : z <= -1 ? " lo" : "";
+    return `<span class="cat${cls}"><span class="k">${CAT_LABELS[stat] || stat}</span>`
+         + `<span class="z">${z >= 0 ? "+" : ""}${z.toFixed(1)}</span></span>`;
+  }).filter(Boolean).join("");
+  return `<div class="cats-grid">${cells}</div>`;
+}
+
 const legend = document.getElementById("legend");
 const LEGEND_KEY = "draft-board-legend-open";
 try {
@@ -537,6 +611,7 @@ document.getElementById("season").textContent =
 document.getElementById("league").textContent =
   `${DATA.league.teams} teams · ` +
   POSITIONS.map(p => `${DATA.league.starters[p]}${p}`).join(" ") +
+  ` · ${IS_CATS ? DATA.categories.length + " categories" : "points league"}` +
   ` · ${DATA.players.length} players`;
 
 verifyAgainstPython();

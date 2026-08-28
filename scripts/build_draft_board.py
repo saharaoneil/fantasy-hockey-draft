@@ -217,6 +217,10 @@ def main() -> int:
 
     columns = ["name", "position", "age", "projected_games", "projected_points",
                "replacement", "vorp", "adp", "gap"]
+    # In categories the per-column z-scores are the whole point -- they are what
+    # tells a specialist apart from a generalist, which a single total cannot.
+    z_columns = sorted(c for c in board.columns if c.startswith("z_"))
+    export_columns = columns + (z_columns if args.format == "categories" else [])
     print(f"\nTOP 20 BY VORP for {args.target_season}-{str(args.target_season+1)[2:]}")
     top = board[columns].head(20).copy()
     for col in ("age", "projected_games", "projected_points", "replacement", "vorp"):
@@ -263,11 +267,17 @@ def main() -> int:
                 "target_season": args.target_season,
                 "format": args.format,
                 "adp_source": adp_source,
+                "value_label": "Z" if args.format == "categories" else "Pts",
+                "categories": (
+                    [c.stat for c in cats.DEFAULT_SKATER_CATEGORIES]
+                    + [c.stat for c in cats.DEFAULT_GOALIE_CATEGORIES]
+                    if args.format == "categories" else []
+                ),
                 "league": {"teams": args.teams,
                            "starters": dict(league.starters)},
                 "scoring": dict(value.DEFAULT_SCORING.weights),
                 "players": json.loads(
-                    board[["playerId"] + columns].to_json(orient="records")
+                    board[["playerId"] + export_columns].to_json(orient="records")
                 ),
             },
             indent=1,
