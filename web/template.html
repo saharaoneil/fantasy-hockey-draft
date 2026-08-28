@@ -647,18 +647,32 @@ function normalizeName(value) {
     .split(/\s+/).filter(w => w && !NAME_SUFFIXES.has(w)).join(" ");
 }
 
-// Built once. Two players can share a name -- there have been two Sebastian
-// Ahos -- so a key maps to a list and an ambiguous hit is reported, never
-// guessed at.
-const nameIndex = (() => {
-  const index = new Map();
+/* Two indexes, because draft rooms write names two different ways.
+
+   Full names cover a pasted "Nathan MacKinnon". Yahoo's draft log abbreviates
+   to "N. MacKinnon", so there is a second index keyed on first initial plus
+   surname. Both map to a LIST of ids: two players can share a full name --
+   there have been two Sebastian Ahos -- and abbreviation collides far more
+   often still, so an ambiguous hit is reported rather than guessed at. */
+const [nameIndex, initialIndex] = (() => {
+  const full = new Map(), abbrev = new Map();
+  const add = (map, key, id) => {
+    if (!key) return;
+    if (!map.has(key)) map.set(key, []);
+    if (!map.get(key).includes(id)) map.get(key).push(id);
+  };
   for (const p of DATA.players) {
     const key = normalizeName(p.name || "");
     if (!key) continue;
-    if (!index.has(key)) index.set(key, []);
-    index.get(key).push(p.playerId);
+    add(full, key, p.playerId);
+    const words = key.split(" ");
+    if (words.length >= 2) {
+      // "nathan mackinnon" -> "n mackinnon"; keeps multi-word surnames whole,
+      // so "james van riemsdyk" becomes "j van riemsdyk".
+      add(abbrev, [words[0][0], ...words.slice(1)].join(" "), p.playerId);
+    }
   }
-  return index;
+  return [full, abbrev];
 })();
 
 /* Find every player named in one line of a draft log.
@@ -685,7 +699,7 @@ function playersInLine(line) {
   for (let start = 0; start < words.length; start += 1) {
     for (let len = Math.min(MAX_NAME_WORDS, words.length - start); len >= 2; len -= 1) {
       const key = words.slice(start, start + len).join(" ");
-      const ids = nameIndex.get(key);
+      const ids = nameIndex.get(key) || initialIndex.get(key);
       if (ids) { found.push({ start, len, ids, key }); break; }
     }
   }

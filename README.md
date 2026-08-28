@@ -423,10 +423,20 @@ break the offline promise above for the sake of a typeface.
   match is **reported, not dropped**, so a silent miss cannot leave a player
   wrongly available.
 
-  This is the piece that removes most of the alt-tab friction. It is also the
-  receiving end for a future bookmarklet that scrapes the draft page — and if
-  that ever breaks against changed markup, manual paste still works, which is
-  why it was built first.
+  Abbreviated names work too: Yahoo's draft log writes `N. MacKinnon`, so
+  there is a second index on first-initial-plus-surname. Where that is
+  ambiguous it is **refused, not guessed** — this board contains two players
+  called Elias Pettersson, plus five other abbreviation collisions like
+  Jaccob/Josiah Slavin, and picking one at random would quietly mark the wrong
+  player gone.
+
+  `tools/yahoo-draft-scrape.js` automates the copy from a Yahoo draft room.
+  Paste it into the Console with the Picks view open and it copies one line
+  per pick. It finds the list **structurally** — the element with the most
+  direct children each holding one name — because Yahoo's CSS classes are
+  generated (`W(150px)`, `Fxg(1)`) and would break silently, most likely
+  mid-draft. Manual paste keeps working if it ever does break, which is why
+  the matcher was built first and the scraper second.
 - A collapsible **column legend** — VORP, ADP, Gap and Δ are not self-evident,
   and it states plainly whether ADP is real or the stand-in, since that changes
   how much the Gap column is worth. Open on a first visit, remembers being shut
